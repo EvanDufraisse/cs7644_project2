@@ -57,25 +57,44 @@ class FloorPlaneExtract {
         double fx,fy,cx,cy;
         geometry_msgs::Pose2D last_pose;
 
-        typedef enum {
-            UNUSABLE,
-            UNTRAVERSABLE,
-            TRAVERSABLE
-        } ThumbType;
+    int unusable_threshold_{};
+    double above_below_ratio_{};
+    double above_below_threshold_{};
+
+    typedef enum {
+        UNUSABLE,
+        UNTRAVERSABLE,
+        TRAVERSABLE
+    } ThumbType;
 
         ThumbType check_thumb(const cv::Mat_<cv::Vec3b> & thumb,
                 const cv::Mat_<float> & thumb_z) {
-            // TODO: Modify this function to take a decision on the traversability of the patch of ground 
-            // corresponding to this image.
-            for (int r=0;r<thumb_z.rows;r++) {
-                for (int c=0;c<thumb_z.cols;c++) {
-                    if (std::isnan(thumb_z(r,c))) {
-                        // ignore this point, it has not been observed from the kinect
+            unsigned int above = 0;
+            unsigned int below = 0;
+            unsigned int unusable = 0;
+            for (int r = 0; r < thumb_z.rows; r++) {
+                for (int c = 0; c < thumb_z.cols; c++) {
+                    if (std::isnan(thumb_z(r, c))) {
+                        unusable++;
                         continue;
+                    }
+                    if (thumb_z(r, c) < above_below_threshold_) {
+                        below++;
+                    } else {
+                        above++;
                     }
                 }
             }
-            return UNUSABLE;
+
+            if (unusable > unusable_threshold_) {
+                return UNUSABLE;
+            }
+
+            if ((float) above / (float) (above + below) < above_below_ratio_) {
+                return TRAVERSABLE;
+            }
+
+            return UNTRAVERSABLE;
         }
 
 
@@ -102,7 +121,7 @@ class FloorPlaneExtract {
             last_pose.x=tfw.getOrigin().x();
             last_pose.y=tfw.getOrigin().y();
             last_pose.theta=tf::getYaw(tfw.getRotation());
-            
+
 
             cv::Mat img(cv_bridge::toCvShare(img_msg,"bgr8")->image);
             pcl::PointCloud<pcl::PointXYZ> pc_sensor, pc_base;
@@ -153,7 +172,7 @@ class FloorPlaneExtract {
                         // We have enough images of this type
                         type = UNUSABLE;
                     }
-                    if (type != UNUSABLE) { 
+                    if (type != UNUSABLE) {
                         // Old fashion formatting
                         char dirname[1024],filename[1024],labelname[1024];
                         sprintf(dirname,"%s/%04ld",outdir_.c_str(),image_counter_/1000);
@@ -174,11 +193,11 @@ class FloorPlaneExtract {
                     // Now for display (could be disabled to save CPU)
                     int mark = 0;
                     switch (type) {
-                        case UNTRAVERSABLE: 
+                        case UNTRAVERSABLE:
                             mark = 2; break;
-                        case TRAVERSABLE: 
+                        case TRAVERSABLE:
                             mark = 1; break;
-                        case UNUSABLE: 
+                        case UNUSABLE:
                         default:
                             mark = 0; break;
                     }
@@ -191,7 +210,7 @@ class FloorPlaneExtract {
                 }
             }
             printf("Image counter at %ld (%ld / %ld)\n",image_counter_,traversable_counter_,untraversable_counter_);
-            
+
             cv_bridge::CvImage br(img_msg->header,"bgr8",img);
             image_pub_.publish(br.toImageMsg());
         }
@@ -210,6 +229,9 @@ class FloorPlaneExtract {
             nh_.param("max_image_per_type",max_image_per_type_,1000);
             std::string transport = "raw";
             nh_.param("transport",transport,transport);
+            nh_.param("unusable_threshold", unusable_threshold_, 250);
+            nh_.param("above_below_ratio", above_below_ratio_, 1.0);
+            nh_.param("above_below_threshold", above_below_threshold_, -0.0106);
 
             // Reset label file
             char labelname[1024];
@@ -234,7 +256,7 @@ class FloorPlaneExtract {
             info_sub_ = nh_.subscribe("info",1,&FloorPlaneExtract::calibration_callback,this);
             // scan_sub_ = nh_.subscribe("scans",1,&FloorPlaneExtract::pc_callback,this);
             // image_sub_ = it_.subscribe<FloorPlaneExtract>("image",1, &FloorPlaneExtract::image_callback,this,transport);
-            
+
             // Created a synchronized subscriber for point cloud and image. The
             // need for pointer is suspicious, but it works this way.
             imgSub.reset(new message_filters::Subscriber<sensor_msgs::Image>(nh_,"image",1));
@@ -246,7 +268,7 @@ class FloorPlaneExtract {
 
 };
 
-int main(int argc, char * argv[]) 
+int main(int argc, char * argv[])
 {
     ros::init(argc,argv,"floor_plane_Extract");
     FloorPlaneExtract fp;
