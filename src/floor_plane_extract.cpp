@@ -41,19 +41,23 @@ protected:
     std::string base_frame_;
     std::string world_frame_;
     std::string outdir_;
-    double max_range_;
-    double height_threshold_;
-    double min_displacement_;
-    double min_rotation_;
-    int thumb_size_;
-    int max_image_per_type_;
+    double max_range_{};
+    double height_threshold_{};
+    double min_displacement_{};
+    double min_rotation_{};
+    int thumb_size_{};
+    int max_image_per_type_{};
     unsigned long image_counter_;
     unsigned long traversable_counter_;
     unsigned long untraversable_counter_;
 
     bool has_info;
-    double fx, fy, cx, cy;
+    double fx{}, fy{}, cx{}, cy{};
     geometry_msgs::Pose2D last_pose;
+
+    int unusable_threshold_{};
+    double above_below_ratio_{};
+    double above_below_threshold_{};
 
     typedef enum {
         UNUSABLE,
@@ -61,20 +65,17 @@ protected:
         TRAVERSABLE
     } ThumbType;
 
-    ThumbType check_thumb(const cv::Mat_<cv::Vec3b> &thumb,
-                          const cv::Mat_<float> &thumb_z) {
-        // TODO: Modify this function to take a decision on the traversability of the patch of ground
-        // corresponding to this image.
+    ThumbType check_thumb(const cv::Mat_<cv::Vec3b> &thumb, const cv::Mat_<float> &thumb_z) {
         unsigned int above = 0;
         unsigned int below = 0;
-        float threshold = -0.0106;
+        unsigned int unusable = 0;
         for (int r = 0; r < thumb_z.rows; r++) {
             for (int c = 0; c < thumb_z.cols; c++) {
                 if (std::isnan(thumb_z(r, c))) {
-                    // ignore this point, it has not been observed from the kinect
+                    unusable++;
                     continue;
                 }
-                if (thumb_z(r, c) < threshold) {
+                if (thumb_z(r, c) < above_below_threshold_) {
                     below++;
                 } else {
                     above++;
@@ -82,9 +83,15 @@ protected:
             }
         }
 
-        printf("%F\n", (float) above / (float) (below + above));
+        if (unusable > unusable_threshold_) {
+            return UNUSABLE;
+        }
 
-        return UNUSABLE;
+        if ((float) above / (float) (above + below) < above_below_ratio_) {
+            return TRAVERSABLE;
+        }
+
+        return UNTRAVERSABLE;
     }
 
 
@@ -227,6 +234,9 @@ public:
         nh_.param("max_image_per_type", max_image_per_type_, 1000);
         std::string transport = "raw";
         nh_.param("transport", transport, transport);
+        nh_.param("unusable_threshold", unusable_threshold_, 250);
+        nh_.param("above_below_ratio", above_below_ratio_, 1.0);
+        nh_.param("above_below_threshold", above_below_threshold_, -0.0106);
 
         // Reset label file
         char labelname[1024];
