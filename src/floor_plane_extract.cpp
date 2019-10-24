@@ -43,18 +43,18 @@ class FloorPlaneExtract {
         std::string base_frame_;
         std::string world_frame_;
         std::string outdir_;
-        double max_range_;
-        double height_threshold_;
-        double min_displacement_;
-        double min_rotation_;
-        int thumb_size_;
-        int max_image_per_type_;
+        double max_range_{};
+        double height_threshold_{};
+        double min_displacement_{};
+        double min_rotation_{};
+        int thumb_size_{};
+        int max_image_per_type_{};
         unsigned long image_counter_;
         unsigned long traversable_counter_;
         unsigned long untraversable_counter_;
 
         bool has_info;
-        double fx,fy,cx,cy;
+        double fx{},fy{},cx{},cy{};
         geometry_msgs::Pose2D last_pose;
 
     int unusable_threshold_{};
@@ -74,11 +74,11 @@ class FloorPlaneExtract {
             unsigned int unusable = 0;
             for (int r = 0; r < thumb_z.rows; r++) {
                 for (int c = 0; c < thumb_z.cols; c++) {
+//                    printf("thumb_z %f\n", thumb_z(r, c));
                     if (std::isnan(thumb_z(r, c))) {
                         unusable++;
-                        continue;
                     }
-                    if (thumb_z(r, c) < above_below_threshold_) {
+                    else if (thumb_z(r, c) < above_below_threshold_) {
                         below++;
                     } else {
                         above++;
@@ -86,15 +86,20 @@ class FloorPlaneExtract {
                 }
             }
 
+//            printf("Above %i\n", above);
+//            printf("Below %i\n", below);
+//            printf("Unusable %i\n", unusable);
+//            printf("Ratio %f\n", (float) above / (float) (above + below));
+
             if (unusable > unusable_threshold_) {
                 return UNUSABLE;
             }
 
-            if ((float) above / (float) (above + below) < above_below_ratio_) {
-                return TRAVERSABLE;
+            if ((float) above / (float) (above + below) > above_below_ratio_) {
+                return UNTRAVERSABLE;
             }
 
-            return UNTRAVERSABLE;
+            return TRAVERSABLE;
         }
 
 
